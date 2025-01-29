@@ -1,9 +1,10 @@
 import express from "express"
-import { Signup } from "../controller/authController.js";
+import { teacherSignup ,studentSignup ,login } from "../controller/authController.js";
 const router=express.Router()
 
-router.post("/Signup/teacher",Signup);
-// router.post("/Signup/Student",Singup);
+router.post("/Signup/teacher",teacherSignup);
+router.post("/Signup/Student",studentSignup);
+router.post("/Login",login)
 
 
 
