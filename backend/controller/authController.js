@@ -2,13 +2,16 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import Teacher from "../models/teacherSchema.js";
+import Student from "../models/studentSchema.js";
 
 dotenv.config();
+
+/** ✅ TEACHER SIGNUP */
 export const teacherSignup = async (req, res) => {
     try {
-        const { name, email, mobile, password, confirmPass, subject } = req.body;
+        const { name, email, mobile, password, confirmPass, subject, pin } = req.body;
 
-        if (!name || !email || !mobile || !password || !confirmPass || !subject) {
+        if (!name || !email || !mobile || !password || !confirmPass || !subject || !pin) {
             return res.status(400).json({ msg: "All fields are required" });
         }
 
@@ -16,38 +19,31 @@ export const teacherSignup = async (req, res) => {
             return res.status(400).json({ msg: "Passwords do not match" });
         }
 
-        // Check if teacher already exists
         const existingTeacher = await Teacher.findOne({ email });
         if (existingTeacher) {
             return res.status(400).json({ msg: "Teacher already registered" });
         }
 
-        // Hash the password
+        // Hash password before saving
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Save teacher in the database
-        const teacher = new Teacher({ name, email, mobile, password: hashedPassword, subject });
+        const teacher = new Teacher({ name, email, mobile, password: hashedPassword, subject, role: "teacher" });
         await teacher.save();
 
         // Generate JWT token
-        const token = jwt.sign({ email, role: "teacher" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ email, role: "teacher", id: teacher._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
         // Set token in HTTP-only cookies
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "Strict",
-            maxAge: 3600000,
-        });
+        res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "Strict", maxAge: 3600000 });
 
-        res.status(201).json({ msg: "Teacher registered successfully", token, role: "teacher" });
+        res.status(201).json({ msg: "Teacher registered successfully", token, role: "teacher", user: { id: teacher._id, name, email, role: "teacher" } });
 
     } catch (error) {
-        res.status(500).json({ msg: "There is something wrong", error: error.message });
+        res.status(500).json({ msg: "Something went wrong", error: error.message });
     }
 };
 
-// 🎓 Student Signup Function
+/** ✅ STUDENT SIGNUP */
 export const studentSignup = async (req, res) => {
     try {
         const { name, email, mobile, password, confirmPass } = req.body;
@@ -60,39 +56,31 @@ export const studentSignup = async (req, res) => {
             return res.status(400).json({ msg: "Passwords do not match" });
         }
 
-        // Check if student already exists
         const existingStudent = await Student.findOne({ email });
         if (existingStudent) {
             return res.status(400).json({ msg: "Student already registered" });
         }
 
-        // Hash the password
+        // Hash password before saving
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Save student in the database
-        const student = new Student({ name, email, mobile, password: hashedPassword });
+        const student = new Student({ name, email, mobile, password: hashedPassword, role: "student" });
         await student.save();
 
         // Generate JWT token
-        const token = jwt.sign({ email, role: "student" }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ email, role: "student", id: student._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
         // Set token in HTTP-only cookies
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "Strict",
-            maxAge: 3600000,
-        });
+        res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "Strict", maxAge: 3600000 });
 
-        res.status(201).json({ msg: "Student registered successfully", token, role: "student" });
+        res.status(201).json({ msg: "Student registered successfully", token, role: "student", user: { id: student._id, name, email, role: "student" } });
 
     } catch (error) {
-        res.status(500).json({ msg: "There is something wrong", error: error.message });
+        res.status(500).json({ msg: "Something went wrong", error: error.message });
     }
 };
 
-
-// Login Function for both Teachers and Students
+/** ✅ LOGIN FUNCTION */
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -101,39 +89,38 @@ export const login = async (req, res) => {
             return res.status(400).json({ msg: "Email and password are required" });
         }
 
-        // Check if the user is a teacher
-        let user = teachers.find((teacher) => teacher.email === email);
+        let user = await Teacher.findOne({ email }) || await Student.findOne({ email });
 
-        // If not a teacher, check if the user is a student
         if (!user) {
-            user = students.find((student) => student.email === email);
+            return res.status(404).json({ msg: "User not found" });
         }
 
-        // If user doesn't exist
-        if (!user) {
-            return res.status(400).json({ msg: "User not found" });
-        }
-
-        // Check if the password is correct
+        // Check if password matches
         const isPasswordCorrect = await bcrypt.compare(password, user.password);
         if (!isPasswordCorrect) {
-            return res.status(400).json({ msg: "Invalid credentials" });
+            return res.status(400).json({ msg: "Invalid email or password" });
         }
 
         // Generate JWT token
-        const token = jwt.sign({ email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        const token = jwt.sign({ email: user.email, role: user.role, id: user._id }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
         // Set token in HTTP-only cookies
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production", // Secure cookie in production
-            sameSite: "Strict", // CSRF protection
-            maxAge: 3600000, // 1 hour expiry
-        });
+        res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "Strict", maxAge: 3600000 });
 
-        res.status(200).json({ msg: `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} logged in successfully`, token, role: user.role });
+        res.status(200).json({ msg: `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} logged in successfully`, token, role: user.role, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
 
     } catch (error) {
-        res.status(500).json({ msg: "There is something wrong", error: error.message });
+        res.status(500).json({ msg: "Something went wrong", error: error.message });
+    }
+};
+
+/** ✅ LOGOUT FUNCTION */
+export const logout = (req, res) => {
+    try {
+        res.clearCookie("token", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "Strict" });
+
+        return res.status(200).json({ msg: "Logged out successfully" });
+    } catch (error) {
+        res.status(500).json({ msg: "Error logging out", error: error.message });
     }
 };

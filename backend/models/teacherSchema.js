@@ -23,6 +23,11 @@ const teacherSchema = new mongoose.Schema({
         type: String,
         default: "teacher", // Default role is teacher
     },
+    pin:
+    {
+        type:String,
+        require:true,
+    },
     profileCompleted: {
         type: Boolean,
         default: false, // Profile completion flag
